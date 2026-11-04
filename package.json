@@ -1,7 +1,7 @@
 {
   "name": "adbmime",
   "version": "2.1.0",
-  "description": "Web console to discover and manage Android interactive whiteboards over ADB (TCP 5555).",
+  "description": "Web console to discover and manage Android devices over ADB (TCP 5555).",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
