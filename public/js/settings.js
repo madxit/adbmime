@@ -2,19 +2,47 @@
 import { icon } from '/assets/icons.js';
 import { flagUrl, getLang, LANGUAGES, setLang, t } from '/assets/i18n.js';
 import { getPref, getTheme, resolvedTheme, setPref, setTheme, toggleTheme } from '/assets/prefs.js';
-import { $, $$, esc, state } from './core.js';
+import { $, esc, state } from './core.js';
+import { dropdown } from './dropdown.js';
 
-function renderLangs() {
-  $('#langGrid').innerHTML = LANGUAGES.map(
-    (l) => `<button class="lang-btn ${l.code === getLang() ? 'active' : ''}" data-lang="${l.code}" lang="${l.code}">
-      <img src="${flagUrl(l.code)}" alt="" width="22" height="22">
-      <span><b>${esc(l.name)}</b><small>${esc(l.en)}</small></span>
-    </button>`,
-  ).join('');
+const THEMES = [
+  { value: 'light', key: 'settings.themeLight', icon: 'sun' },
+  { value: 'dark', key: 'settings.themeDark', icon: 'moon' },
+  { value: 'system', key: 'settings.themeSystem', icon: 'monitor' },
+];
+
+let langDd;
+let themeDd;
+
+/** Dropdowns of the drawer: language (flags) and theme (symbols). */
+function initDropdowns() {
+  langDd = dropdown($('#langDd'), {
+    options: () =>
+      LANGUAGES.map((l) => ({
+        value: l.code,
+        label: l.name,
+        sub: l.en !== l.name ? l.en : '', // no repetition for English
+        icon: `<img src="${flagUrl(l.code)}" alt="" width="20" height="20">`,
+      })),
+    value: getLang,
+    onChange: async (code) => {
+      await setLang(code);
+      renderServerInfo();
+    },
+  });
+  themeDd = dropdown($('#themeDd'), {
+    options: () => THEMES.map((th) => ({ value: th.value, label: t(th.key), icon: icon(th.icon) })),
+    value: getTheme,
+    onChange: (v) => setTheme(v),
+  });
+  window.addEventListener('langchange', () => {
+    langDd.render();
+    themeDd.render();
+  });
 }
 
 function renderThemes() {
-  $$('[data-theme-pick]').forEach((b) => b.classList.toggle('active', b.dataset.themePick === getTheme()));
+  themeDd?.render();
   const dark = resolvedTheme() === 'dark';
   $('#themeToggle').innerHTML = icon(dark ? 'sun' : 'moon');
 }
@@ -24,6 +52,7 @@ export function renderServerInfo() {
   if (!m) return;
   const rows = [
     ['settings.version', m.version],
+    ['settings.commit', m.commit ? `${m.commit}${m.dirty ? ` (${t('settings.dirty')})` : ''}` : '—'],
     ['settings.adb', m.adb.ok ? `v${m.adb.version}` : m.adb.error || '—'],
     ['settings.adbPort', m.adbPort],
     ['settings.networks', m.scan.subnets?.join(', ') || '—'],
@@ -34,7 +63,7 @@ export function renderServerInfo() {
 }
 
 export function openSettings() {
-  renderLangs();
+  langDd.render();
   renderThemes();
   renderServerInfo();
   $('#settings').classList.add('open');
@@ -44,26 +73,18 @@ export function openSettings() {
 const closeSettings = () => $('#settings').classList.remove('open');
 
 export function initSettings() {
+  initDropdowns();
   renderThemes();
   $('#openSettings').onclick = openSettings;
   $('#closeSettings').onclick = closeSettings;
-  $('#settings').onclick = (e) => e.target.id === 'settings' && closeSettings();
+  // Block body: returning false from onclick would cancel every click inside the drawer.
+  $('#settings').onclick = (e) => {
+    if (e.target.id === 'settings') closeSettings();
+  };
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && $('#settings').classList.contains('open') && !$('#modal').classList.contains('open')) closeSettings();
   });
 
-  $('#langGrid').onclick = async (e) => {
-    const b = e.target.closest('[data-lang]');
-    if (!b) return;
-    await setLang(b.dataset.lang);
-    renderLangs();
-    renderServerInfo();
-  };
-
-  $('#themeGrid').onclick = (e) => {
-    const b = e.target.closest('[data-theme-pick]');
-    if (b) setTheme(b.dataset.themePick);
-  };
   $('#themeToggle').onclick = toggleTheme;
   window.addEventListener('themechange', renderThemes);
 

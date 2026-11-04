@@ -33,6 +33,9 @@ export const label = (serial) => {
 /** Selected boards that are connected via ADB: the targets of every action. */
 export const connectedTargets = () => [...state.selected].filter((s) => findDevice(s)?.status === 'connected');
 
+/** Random id; unlike crypto.randomUUID it also works on plain http:// LAN addresses. */
+export const uid = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+
 // ------------------------------------------------------------------ API
 
 export async function api(path, { method = 'GET', body, form } = {}) {
@@ -42,7 +45,13 @@ export async function api(path, { method = 'GET', body, form } = {}) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(path, opts);
+  let res;
+  try {
+    res = await fetch(path, opts);
+  } catch {
+    // Network failure (server stopped, PC unreachable): a readable message instead of "Failed to fetch".
+    throw new Error(t('common.network'));
+  }
   if (res.status === 401) {
     location.replace('/login');
     throw new Error(t('common.sessionExpired'));
@@ -98,7 +107,11 @@ export function modal({ title, text = '', fields = [], okText = t('modal.confirm
       close(Object.fromEntries(fields.map((f) => [f.id, $(`#mf_${f.id}`).value])));
     };
     $('#modalCancel').onclick = () => close(null);
-    bg.onclick = (e) => e.target === bg && close(null);
+    // Block body on purpose: an onclick handler returning false cancels the click (it would
+    // stop the OK button from submitting the form).
+    bg.onclick = (e) => {
+      if (e.target === bg) close(null);
+    };
     document.addEventListener('keydown', onKey);
   });
 }
@@ -122,7 +135,7 @@ export function addLog(title, data) {
   const item = document.createElement('div');
   item.className = 'log-item';
   const time = new Date().toLocaleTimeString(locale());
-  const kind = data.error || (!data.ok && data.failed) ? 'ko' : data.failed ? 'mixed' : 'ok';
+  const kind = data.error || (!data.ok && data.failed) ? 'ko' : data.failed || data.stopped ? 'mixed' : 'ok';
   const rows = (data.results ?? [])
     .map(
       (r) => `<div class="res"><b><i class="sdot" style="background:var(--${r.ok ? 'green' : 'red'})"></i>${esc(label(r.serial))}</b>
@@ -136,6 +149,7 @@ export function addLog(title, data) {
           <span>${time}</span>
           ${data.ok ? `<span class="ok">${esc(t('log.ok', { n: data.ok }))}</span>` : ''}
           ${data.failed ? `<span class="ko">${esc(t('log.failed', { n: data.failed }))}</span>` : ''}
+          ${data.stopped ? `<span class="warn">${esc(t('log.stopped'))}</span>` : ''}
           ${data.error ? `<span class="ko">${esc(data.error)}</span>` : ''}
         </span>
       </span>
@@ -162,7 +176,8 @@ export async function run(button, title, fn) {
   try {
     const data = await fn();
     addLog(title, data);
-    if (data.failed) toast(t('run.partial', { title, ok: data.ok, failed: data.failed }), data.ok ? 'info' : 'err');
+    if (data.stopped) toast(t('run.stopped', { title }), 'info');
+    else if (data.failed) toast(t('run.partial', { title, ok: data.ok, failed: data.failed }), data.ok ? 'info' : 'err');
     else toast(t('run.done', { title, n: data.ok }), 'ok');
     return data;
   } catch (err) {

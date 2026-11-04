@@ -26,14 +26,19 @@ export const STEP_TYPES = [
   'unhide',
   'clear',
   'popup',
-  'audio',
   'power',
   'shell',
   'comment',
 ];
 
-/** Steps that are not a plain device shell command: exported as `#@<type> {json}` lines. */
+/**
+ * Steps that are not a plain device shell command: exported as `#@<type> {json}` lines.
+ * "audio" is only read (older files): it becomes an audio popup.
+ */
 export const DIRECTIVE_TYPES = ['install', 'clear', 'popup', 'audio', 'power'];
+
+/** Audio of a popup: none, the popup text read aloud (TTS) or a library audio file. */
+export const POPUP_AUDIO = ['none', 'tts', 'file'];
 
 /** Name of a file stored in the server library (see src/library.js). */
 export const LIBRARY_FILE_RE = /^[a-f0-9]{20}\.(apk|mp3|wav|ogg|m4a)$/;
@@ -169,25 +174,29 @@ export function normalizeStep(raw) {
       if (paths.some((p) => !p.startsWith('/') || p.includes('..') || p.length > 300)) throw new StepError('paths');
       return { type: 'clear', paths };
     }
-    case 'popup': {
-      const text = String(s.text ?? '').trim();
-      if (!text || text.length > 2000) throw new StepError('text');
-      const mode = s.mode ?? 'screen';
-      const level = s.level ?? 'info';
+    case 'popup':
+    case 'audio': {
+      // Legacy "audio" steps are full screen popups whose only content is the audio.
+      const legacy = s.type === 'audio';
+      const mode = legacy ? 'screen' : (s.mode ?? 'screen');
+      const level = legacy ? 'info' : (s.level ?? 'info');
       if (!['screen', 'notification'].includes(mode) || !['info', 'warning', 'urgent'].includes(level)) {
         throw new StepError('option');
       }
-      return { type: 'popup', mode, level, title: String(s.title ?? '').trim().slice(0, 120), text };
-    }
-    case 'audio': {
-      const volume = s.volume === undefined || s.volume === null || s.volume === '' ? null : intIn(s.volume, 0, 15, 'option');
-      if (s.file) {
-        if (!AUDIO_FILE_RE.test(String(s.file))) throw new StepError('file');
-        return { type: 'audio', file: s.file, name: fileName(s.name, s.file), volume };
-      }
+      let audio = legacy ? (s.file ? 'file' : 'tts') : (s.audio ?? 'none');
+      if (!POPUP_AUDIO.includes(audio)) throw new StepError('option');
+      if (mode === 'notification') audio = 'none'; // notifications cannot play audio
       const text = String(s.text ?? '').trim();
-      if (!text || text.length > 1000) throw new StepError('text');
-      return { type: 'audio', text, volume };
+      if ((audio !== 'file' && !text) || text.length > 2000) throw new StepError('text');
+      const step = { type: 'popup', mode, level, title: String(s.title ?? '').trim().slice(0, 120), text, audio };
+      if (audio === 'file') {
+        if (!AUDIO_FILE_RE.test(String(s.file ?? ''))) throw new StepError('file');
+        Object.assign(step, { file: s.file, name: fileName(s.name, s.file) });
+      }
+      if (audio !== 'none') {
+        step.volume = s.volume === undefined || s.volume === null || s.volume === '' ? null : intIn(s.volume, 1, 15, 'option');
+      }
+      return step;
     }
     case 'power':
       if (!['shutdown', 'reboot', 'screen'].includes(s.action)) throw new StepError('option');
@@ -206,10 +215,11 @@ export function stepLabel(step) {
       return `install ${step.name}${step.grant ? ' (-g)' : ''}`;
     case 'clear':
       return `clear ${step.paths.join(' ')}`;
-    case 'popup':
-      return `popup [${step.mode === 'screen' ? step.level : 'notification'}] ${step.title || step.text.slice(0, 50)}`;
-    case 'audio':
-      return `audio ${step.file ? step.name : `"${step.text.slice(0, 50)}"`}${step.volume === null ? '' : ` vol=${step.volume}`}`;
+    case 'popup': {
+      const audio = step.audio === 'file' ? ` +audio ${step.name}` : step.audio === 'tts' ? ' +tts' : '';
+      const vol = step.volume === null || step.volume === undefined ? '' : ` vol=${step.volume}`;
+      return `popup [${step.mode === 'screen' ? step.level : 'notification'}] ${step.title || step.text.slice(0, 50)}${audio}${vol}`;
+    }
     case 'power':
       return `power ${step.action}`;
     case 'sleep':
@@ -220,8 +230,9 @@ export function stepLabel(step) {
 }
 
 /** Validate a whole sequence. Errors carry the (0-based) index of the faulty step. */
-export function normalizeSteps(list) {
-  if (!Array.isArray(list) || !list.length) throw new StepError('empty');
+export function normalizeSteps(list, { allowEmpty = false } = {}) {
+  // An empty sequence can be saved (and filled later), but never run.
+  if (!Array.isArray(list) || (!list.length && !allowEmpty)) throw new StepError('empty');
   if (list.length > MAX_STEPS) throw new StepError('tooMany', null, { max: MAX_STEPS });
   const steps = list.map((raw, i) => {
     try {

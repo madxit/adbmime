@@ -11,12 +11,13 @@ import { config, MEDIA_DIR, ROOT_DIR, UPLOAD_DIR } from './config.js';
 import * as devices from './devices.js';
 import { i18nMiddleware, LANGS, rebindLang, t } from './i18n.js';
 import { localInterfaces } from './network.js';
+import * as library from './library.js';
 import * as sequences from './sequences.js';
+import { build } from './version.js';
 import { renderMessagePage } from './views.js';
 
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const SHARED_DIR = path.join(ROOT_DIR, 'src', 'shared');
-const { version } = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
 const app = express();
 app.disable('x-powered-by');
 app.use(i18nMiddleware);
@@ -60,6 +61,27 @@ const audioUpload = multer({
   },
 });
 
+// Files kept in the library (referenced by sequences): APKs and audio.
+const libraryUpload = multer({
+  storage: multer.diskStorage({
+    destination: UPLOAD_DIR,
+    filename: (_req, file, cb) =>
+      cb(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`),
+  }),
+  limits: { fileSize: 2 * 1024 ** 3 },
+  fileFilter: (req, file, cb) => {
+    const ok = ['.apk', ...AUDIO_EXT].includes(path.extname(file.originalname).toLowerCase());
+    cb(ok ? null : new HttpError(400, 'libraryFormats', { list: ['.apk', ...AUDIO_EXT].join(', ') }, req.lang), ok);
+  },
+});
+
+/** Path of a library file sent by the client, or a 400 error. */
+function libraryPath(file) {
+  const full = library.resolve(file);
+  if (!full) throw new HttpError(400, 'libraryMissing', { name: String(file ?? '') });
+  return full;
+}
+
 
 /** Validate the list of target boards sent by the client. */
 function targets(raw) {
@@ -94,6 +116,18 @@ app.get('/m/:id', (req, res) => {
   res.type('html').send(renderMessagePage(msg));
 });
 
+// Speech of a "tts" popup synthesised on this PC: fallback for boards that cannot speak themselves.
+app.get('/m/:id/speech', async (req, res) => {
+  const file = await actions.speechFile(req.params.id);
+  if (!file) return res.sendStatus(404);
+  res.sendFile(path.join(MEDIA_DIR, file));
+});
+
+// Called by an audio popup when the browser blocked autoplay: the server taps the board.
+app.post('/m/:id/play', async (req, res) => {
+  res.status((await actions.tapToPlay(req.params.id, req.query.b)) ? 204 : 404).end();
+});
+
 app.get('/media/:file', (req, res) => {
   const file = path.basename(req.params.file);
   const full = path.join(MEDIA_DIR, file);
@@ -123,6 +157,8 @@ app.post('/api/logout', (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/favicon.ico', (_req, res) => res.redirect(301, '/assets/favicon.svg'));
+
 // Static assets needed by the login page are public; everything else requires a session.
 app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets')));
 app.use(requireAuth);
@@ -144,7 +180,9 @@ app.get('/api/state', (req, res) => {
     interfaces: localInterfaces(),
     adbPort: config.adbPort,
     clearAllowedRoots: config.clearAllowedRoots,
-    version,
+    version: build.version,
+    commit: build.commit,
+    dirty: build.dirty,
     langs: LANGS,
   });
 });
@@ -154,7 +192,7 @@ app.post('/api/scan', async (_req, res) => {
 });
 
 app.post('/api/refresh', async (_req, res) => {
-  await Promise.all([devices.refreshAdb(), devices.probeKnown()]);
+  await Promise.all([devices.refreshAdb.fresh(), devices.probeKnown.fresh()]);
   res.json({ devices: devices.list() });
 });
 
@@ -216,6 +254,12 @@ app.post('/api/disconnect', async (req, res) => {
 });
 
 app.post('/api/actions/install', apkUpload.single('apk'), rebindLang, async (req, res) => {
+  if (!req.file && req.body.libraryFile) {
+    // APK already stored in the library (e.g. recorded into a sequence): never deleted here.
+    const serials = targets(req.body.serials);
+    const grantPermissions = req.body.grantPermissions === 'true';
+    return res.json(summary(await actions.installApk(serials, libraryPath(req.body.libraryFile), { grantPermissions })));
+  }
   if (!req.file) throw new HttpError(400, 'uploadApk');
   try {
     const serials = targets(req.body.serials);
@@ -246,21 +290,21 @@ app.post('/api/actions/clear', async (req, res) => {
   res.json(summary(await actions.clearFolders(serials, paths)));
 });
 
-app.post('/api/actions/message', async (req, res) => {
-  const serials = targets(req.body?.serials);
-  if (!String(req.body?.text ?? '').trim()) throw new HttpError(400, 'msgTextRequired');
-  res.json(summary(await actions.sendMessage(serials, req.body)));
-});
-
-app.post('/api/actions/audio', audioUpload.single('audio'), rebindLang, async (req, res) => {
+// Popup: JSON or multipart (optional uploaded `audio` file, or `libraryFile`).
+app.post('/api/actions/message', audioUpload.single('audio'), rebindLang, async (req, res) => {
   const serials = targets(req.body.serials);
-  const volume = req.body.volume === undefined || req.body.volume === '' ? null : Number(req.body.volume);
-  if (!req.file && !String(req.body.text ?? '').trim()) {
-    throw new HttpError(400, 'audioRequired');
+  const { mode = 'screen', audio = 'none' } = req.body;
+  const volume = req.body.volume === undefined || req.body.volume === '' || req.body.volume === null ? null : Number(req.body.volume);
+  let audioFile = null;
+  if (mode === 'screen' && audio === 'file') {
+    audioFile = req.file?.filename;
+    if (!audioFile && req.body.libraryFile) audioFile = actions.mediaFromLibrary(libraryPath(req.body.libraryFile));
+    if (!audioFile) throw new HttpError(400, 'audioRequired');
+  } else if (!String(req.body.text ?? '').trim()) {
+    throw new HttpError(400, 'msgTextRequired');
   }
-  res.json(
-    summary(await actions.playAudio(serials, { text: req.body.text, audioFile: req.file?.filename, volume })),
-  );
+  const { title, text, level } = req.body;
+  res.json(summary(await actions.sendMessage(serials, { title, text, level, mode, audio, audioFile, volume })));
 });
 
 app.post('/api/actions/power', async (req, res) => {
@@ -276,10 +320,31 @@ app.post('/api/actions/shell', async (req, res) => {
   res.json(summary(await actions.runShell(serials, req.body.command)));
 });
 
+// A sequence runs for as long as its steps take; `runId` (chosen by the client) lets it be stopped.
 app.post('/api/actions/sequence', async (req, res) => {
   const serials = targets(req.body?.serials);
   const stopOnError = req.body?.stopOnError !== false;
-  res.json(summary(await sequences.run(serials, req.body?.steps, { stopOnError })));
+  const runId = req.body?.runId ?? null;
+  if (runId !== null && !sequences.RUN_ID_RE.test(String(runId))) throw new HttpError(400, 'badRunId');
+  const { results, stopped } = await sequences.run(serials, req.body?.steps, { stopOnError, runId });
+  res.json({ ...summary(results), stopped });
+});
+
+app.post('/api/actions/sequence/:runId/stop', (req, res) => {
+  if (!sequences.stop(req.params.runId)) throw new HttpError(404, 'runNotFound');
+  res.json({ ok: true });
+});
+
+// File library (APKs and audio referenced by sequences).
+app.get('/api/library', (_req, res) => res.json({ files: library.list() }));
+
+app.post('/api/library', libraryUpload.single('file'), rebindLang, async (req, res) => {
+  if (!req.file) throw new HttpError(400, 'libraryFormats', { list: ['.apk', ...AUDIO_EXT].join(', ') });
+  try {
+    res.json(await library.store(req.file.path, req.file.originalname));
+  } finally {
+    fs.rmSync(req.file.path, { force: true });
+  }
 });
 
 // Saved sequences library.
@@ -311,10 +376,27 @@ app.use((err, req, res, _next) => {
 
 devices.load();
 sequences.load();
+library.load();
+actions.cleanupMedia();
+cleanupUploads();
 
-app.listen(config.port, config.host, async () => {
+/** Remove temporary uploads left behind by a crash (they are normally deleted right away). */
+function cleanupUploads() {
+  for (const f of fs.readdirSync(UPLOAD_DIR)) {
+    try {
+      if (Date.now() - fs.statSync(path.join(UPLOAD_DIR, f)).mtimeMs > 3600_000) fs.rmSync(path.join(UPLOAD_DIR, f), { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+// A stray rejected promise must never take the whole console down.
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
+
+const server = app.listen(config.port, config.host, async () => {
   const addrs = localInterfaces().map((i) => `http://${i.address}:${config.port}`);
-  console.log('AdbMime web console');
+  console.log(`AdbMime web console v${build.version}${build.commit ? ` (${build.commit}${build.dirty ? '+' : ''})` : ''}`);
   console.log(`  local:   http://localhost:${config.port}`);
   for (const a of addrs) console.log(`  network: ${a}`);
   if (!config.authUsername && !config.authPassword) {
@@ -327,6 +409,24 @@ app.listen(config.port, config.host, async () => {
   console.log(`  adb:     ${devices.adbStatus.ok ? `v${devices.adbStatus.version}` : devices.adbStatus.error}`);
   if (config.autoScanOnStart) devices.scan().catch((err) => console.warn(`  scan:    ${err.message}`));
 });
+
+// Actions can legitimately take long (sequences with pauses, installs on many boards): Node's
+// default 5 minute request timeout would cut them off.
+server.requestTimeout = 0;
+server.on('error', (err) => {
+  const reason = err.code === 'EADDRINUSE' ? `port ${config.port} is already in use (set PORT in .env)` : err.message;
+  console.error(`AdbMime cannot start: ${reason}`);
+  process.exit(1);
+});
+
+function shutdown(sig) {
+  console.log(`\n${sig}: closing AdbMime…`);
+  server.close(() => process.exit(0));
+  server.closeAllConnections?.();
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Background housekeeping.
 setInterval(() => devices.refreshAdb().catch(() => {}), 4000);

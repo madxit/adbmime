@@ -65,7 +65,8 @@ export async function synthesize(text, lang = 'it') {
   const out = path.join(MEDIA_DIR, file);
   // Text goes through a file, never through the command line, to avoid quoting issues.
   const txt = path.join(MEDIA_DIR, `${id}.txt`);
-  fs.writeFileSync(txt, text, 'utf8');
+  // macOS `say` treats "<...>" as markup and may then produce silence: angle brackets are not spoken anyway.
+  fs.writeFileSync(txt, process.platform === 'darwin' ? text.replace(/[<>]/g, ' ') : text, 'utf8');
 
   try {
     if (process.platform === 'darwin') {

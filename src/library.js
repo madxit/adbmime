@@ -6,19 +6,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_DIR } from './config.js';
 import { LIBRARY_FILE_RE } from './shared/sequence-format.js';
+import { readJson, writeJson } from './store.js';
 
 const INDEX = path.join(LIBRARY_DIR, 'index.json');
 let index = {}; // file -> { name, size, kind, addedAt }
 
 export function load() {
-  try {
-    if (fs.existsSync(INDEX)) index = JSON.parse(fs.readFileSync(INDEX, 'utf8')) ?? {};
-  } catch (err) {
-    console.warn(`[library] Cannot read ${INDEX}: ${err.message}`);
-  }
+  const data = readJson(INDEX, {}, 'library');
+  index = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
 }
 
-const persist = () => fs.writeFileSync(INDEX, JSON.stringify(index, null, 2));
+const persist = () => writeJson(INDEX, index);
 
 const hashFile = (file) =>
   new Promise((resolve, reject) => {

@@ -1,10 +1,10 @@
 // Remote screen: shows the screenshot of one board and forwards taps, swipes, keys and text.
-// Actions can be recorded into the sequence open in the Sequences tab.
+// Inputs are recorded into the open sequence when recording is on (see recorder.js).
 import { icon } from '/assets/icons.js';
 import { t } from '/assets/i18n.js';
 import { KEYCODES } from '/shared/sequence-format.js';
-import { $, api, deviceName, esc, findDevice, state, switchTab, toast } from './core.js';
-import { appendSteps, openSequencesTab } from './sequences.js';
+import { $, $$, api, deviceName, esc, findDevice, state, switchTab, toast } from './core.js';
+import { record } from './recorder.js';
 
 const scr = {
   serial: '',
@@ -13,8 +13,6 @@ const scr = {
   url: null, // object URL of the current frame
   size: null, // { w, h } of the device screen (= screenshot size)
   failures: 0,
-  lastRecordAt: 0,
-  recorded: 0,
   textBuffer: '',
   textTimer: null,
 };
@@ -62,7 +60,7 @@ export function renderScreenDevices() {
   $('#scrDevice').value = scr.serial;
   const disabled = !scr.serial;
   for (const id of ['#scrRefresh', '#scrDownload', '#scrLive']) $(id).disabled = disabled;
-  document.querySelectorAll('#scrKeys .btn, #scrTextForm button').forEach((b) => (b.disabled = disabled));
+  $$('#scrKeys .btn, .navbar .btn').forEach((b) => (b.disabled = disabled));
 }
 
 export const invalidateScreenDevices = () => {
@@ -170,25 +168,6 @@ function fx(step) {
   }
 }
 
-function record(step) {
-  if (!$('#scrRecord').checked) return;
-  const steps = [];
-  const now = Date.now();
-  if ($('#scrRecordPauses').checked && scr.lastRecordAt) {
-    const gap = Math.min(600, Math.round((now - scr.lastRecordAt) / 100) / 10);
-    if (gap >= 0.5) steps.push({ type: 'sleep', seconds: gap });
-  }
-  scr.lastRecordAt = now;
-  steps.push(step);
-  appendSteps(steps);
-  scr.recorded++;
-  renderRecCount();
-}
-
-function renderRecCount() {
-  $('#scrRecCount').textContent = scr.recorded ? t('screen.recorded', { n: scr.recorded }) : '';
-}
-
 async function send(step) {
   if (!scr.serial) return;
   fx(step);
@@ -276,13 +255,19 @@ export function initScreen() {
 
   $('#scrDevice').onchange = (e) => setDevice(e.target.value);
   $('#scrRefresh').onclick = () => loadFrame();
-  $('#scrLive').onchange = () => live() && loadFrame();
-  $('#scrInterval').onchange = () => live() && schedule(Number($('#scrInterval').value));
+  $('#scrLive').onchange = () => {
+    if (live()) loadFrame();
+  };
+  $('#scrInterval').onchange = () => {
+    if (live()) schedule(Number($('#scrInterval').value));
+  };
 
-  $('#scrKeys').onclick = (e) => {
+  const onKey = (e) => {
     const b = e.target.closest('[data-key]');
     if (b) send({ type: 'key', keycode: Number(b.dataset.key), longpress: false });
   };
+  $('#scrKeys').addEventListener('click', onKey);
+  $('.navbar').addEventListener('click', onKey);
 
   $('#scrTextForm').onsubmit = (e) => {
     e.preventDefault();
@@ -315,16 +300,6 @@ export function initScreen() {
     setExpandIcon();
   };
 
-  $('#scrRecord').onchange = (e) => {
-    $('#scrRecBadge').classList.toggle('on', e.target.checked);
-    if (e.target.checked) {
-      scr.lastRecordAt = 0;
-      scr.recorded = 0;
-      renderRecCount();
-    }
-  };
-  $('#scrOpenSeq').onclick = openSequencesTab;
-
   window.addEventListener('tabchange', (e) => {
     if (e.detail === 'screen') {
       renderScreenDevices();
@@ -338,7 +313,6 @@ export function initScreen() {
   document.addEventListener('visibilitychange', () => !document.hidden && live() && loadFrame());
   window.addEventListener('langchange', () => {
     setExpandIcon();
-    renderRecCount();
     invalidateScreenDevices();
   });
 }

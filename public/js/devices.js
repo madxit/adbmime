@@ -4,6 +4,7 @@ import { locale, t } from '/assets/i18n.js';
 import {
   $, $$, api, confirmDanger, connectedTargets, deviceName, esc, findDevice, label, modal, ONLINE, run, state, toast,
 } from './core.js';
+import { isRecording } from './recorder.js';
 
 let onOpenScreen = () => {};
 export const setOpenScreenHandler = (fn) => (onOpenScreen = fn);
@@ -84,9 +85,12 @@ export function renderDevices() {
   bar.classList.toggle('warn', targets === 0 && state.selected.size > 0);
   $('#targetTxt').innerHTML = state.selected.size === 0 ? esc(t('target.none')) : t('target.ready', { n: targets });
   $('#targetSub').textContent = notReady > 0 ? t('target.notReady', { n: notReady }) : '';
+  // While recording, actions stay available even without targets (they are only recorded).
+  const recording = isRecording();
   $$('.needs-target').forEach((b) => {
-    if (!b.querySelector('.spinner')) b.disabled = targets === 0;
+    if (!b.querySelector('.spinner')) b.disabled = targets === 0 && !recording;
   });
+  if (recording && targets === 0) $('#targetTxt').textContent = t('rec.targetHint');
   window.dispatchEvent(new CustomEvent('targetschange', { detail: targets }));
 }
 

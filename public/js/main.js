@@ -24,7 +24,14 @@ function renderMeta(data) {
   renderActionsMeta(data);
 }
 
-async function refresh() {
+let refreshing = null;
+
+/** Reload the server state (polling, after actions). Concurrent calls share one request. */
+function refresh() {
+  return (refreshing ??= doRefresh().finally(() => (refreshing = null)));
+}
+
+async function doRefresh() {
   try {
     const data = await api('/api/state');
     state.devices = data.devices;
@@ -34,8 +41,14 @@ async function refresh() {
     renderDevices();
     renderScreenDevices();
     if ($('#settings').classList.contains('open')) renderServerInfo();
+    document.body.classList.remove('server-down');
   } catch (err) {
-    console.warn(err);
+    // Server stopped or unreachable: say so in the status pill; polling continues.
+    const pill = $('#adbPill');
+    pill.className = 'pill err';
+    $('.pill-text', pill).textContent = t('common.network');
+    pill.title = err.message;
+    document.body.classList.add('server-down');
   }
 }
 
@@ -81,6 +94,7 @@ async function boot() {
     if (e.detail.name === 'refreshSeconds') startPolling();
     if (e.detail.name === 'showActivity') applyActivityVisibility();
   });
+  window.addEventListener('recordchange', renderDevices);
   window.addEventListener('langchange', () => {
     // Re-render everything built from JS strings.
     invalidateDevices();

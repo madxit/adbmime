@@ -14,14 +14,15 @@ export const isValidSerial = (serial) =>
 
 /**
  * Run adb with the given arguments.
- * Resolves (never rejects) with { ok, code, stdout, stderr, timedOut }.
+ * Resolves (never rejects) with { ok, code, stdout, stderr, timedOut, aborted }.
+ * `signal` (AbortSignal) kills the adb process, e.g. when a sequence is stopped.
  */
-export function adb(args, { timeout = config.commandTimeoutMs } = {}) {
+export function adb(args, { timeout = config.commandTimeoutMs, signal } = {}) {
   return new Promise((resolve) => {
     execFile(
       config.adbPath,
       args,
-      { timeout, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
+      { timeout, maxBuffer: 16 * 1024 * 1024, windowsHide: true, signal },
       (err, stdout = '', stderr = '') => {
         if (err?.code === 'ENOENT') {
           resolve({
@@ -33,12 +34,14 @@ export function adb(args, { timeout = config.commandTimeoutMs } = {}) {
           });
           return;
         }
+        const aborted = err?.name === 'AbortError';
         resolve({
           ok: !err,
           code: err ? (typeof err.code === 'number' ? err.code : -1) : 0,
           stdout: String(stdout),
           stderr: String(stderr),
-          timedOut: Boolean(err?.killed),
+          timedOut: Boolean(err?.killed) && !aborted,
+          aborted,
         });
       },
     );
@@ -85,23 +88,34 @@ export async function disconnect(serial) {
   return { ok: r.ok && !/error/i.test(out), output: out };
 }
 
-/** Run a command in the device shell. */
+/** Run a command in the device shell. `code` is the remote exit status (adb shell protocol v2). */
 export async function shell(serial, command, opts) {
   const r = await adb(['-s', serial, 'shell', command], opts);
   return {
     ok: r.ok,
     output: `${r.stdout}${r.stderr}`.trim() || (r.timedOut ? 'Timeout' : ''),
+    code: r.code,
     timedOut: r.timedOut,
+    aborted: r.aborted,
   };
 }
 
-export async function install(serial, apkPath, { grantPermissions = false } = {}) {
+/**
+ * Tunnel `localhost:port` on the device to `localhost:port` on this PC (`adb reverse`).
+ * Lets USB devices reach this server even when they are not on the PC's network.
+ */
+export async function reverse(serial, port) {
+  const r = await adb(['-s', serial, 'reverse', `tcp:${port}`, `tcp:${port}`], { timeout: 10_000 });
+  return { ok: r.ok, output: `${r.stdout}${r.stderr}`.trim() };
+}
+
+export async function install(serial, apkPath, { grantPermissions = false, signal } = {}) {
   const args = ['-s', serial, 'install', '-r'];
   if (grantPermissions) args.push('-g');
   args.push(apkPath);
-  const r = await adb(args, { timeout: config.installTimeoutMs });
+  const r = await adb(args, { timeout: config.installTimeoutMs, signal });
   const out = `${r.stdout}${r.stderr}`.trim();
-  return { ok: /\bSuccess\b/.test(out), output: out || (r.timedOut ? 'Timeout' : '') };
+  return { ok: /\bSuccess\b/.test(out), output: out || (r.timedOut ? 'Timeout' : ''), aborted: r.aborted };
 }
 
 export async function uninstall(serial, packageName) {
