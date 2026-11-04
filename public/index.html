@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AdbMime</title>
+  <script src="/assets/theme-boot.js"></script>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body class="booting">
+  <div class="app" id="app">
+    <!-- ============================================================ top bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo"><i data-icon="logo"></i></span>
+        <span class="brand-name">AdbMime</span>
+        <span class="brand-sep"></span>
+        <span class="brand-sub" data-i18n="app.subtitle"></span>
+      </div>
+      <div class="grow"></div>
+      <span class="pill" id="adbPill"><span class="dot"></span><span class="pill-text"></span></span>
+      <button class="btn icon ghost" id="themeToggle" data-i18n-title="topbar.theme"></button>
+      <button class="btn icon ghost" id="openSettings" data-i18n-title="settings.title"><i data-icon="settings"></i></button>
+      <span class="vsep"></span>
+      <span class="user"><span class="avatar" id="avatar"></span><span id="userName"></span></span>
+      <button class="btn icon ghost" id="logout" data-i18n-title="topbar.logout"><i data-icon="logout"></i></button>
+    </header>
+
+    <!-- ============================================================ boards sidebar -->
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2 data-i18n="devices.title"></h2>
+        <span class="count" id="devCount">0</span>
+        <div class="grow"></div>
+        <button class="btn icon sm ghost" id="btnAdd" data-i18n-title="devices.addIp"><i data-icon="plus"></i></button>
+        <button class="btn icon sm ghost" id="btnRefresh" data-i18n-title="devices.refresh"><i data-icon="refresh"></i></button>
+        <button class="btn sm primary" id="btnScan"></button>
+      </div>
+
+      <div class="scanbar" id="scanbar">
+        <div class="row"><span id="scanText"></span><div class="grow"></div><span id="scanFound"></span></div>
+        <div class="progress"><div id="scanProgress"></div></div>
+      </div>
+
+      <div class="filters" id="statusFilter">
+        <button data-f="all" class="active"><span data-i18n="filter.all"></span><b id="cAll">0</b></button>
+        <button data-f="connected"><i class="sdot s-connected"></i><span data-i18n="filter.connected"></span><b id="cConnected">0</b></button>
+        <button data-f="online"><i class="sdot s-online"></i><span data-i18n="filter.online"></span><b id="cOnline">0</b></button>
+        <button data-f="offline"><i class="sdot s-offline"></i><span data-i18n="filter.offline"></span><b id="cOffline">0</b></button>
+      </div>
+
+      <div class="search">
+        <i data-icon="search"></i>
+        <input class="input" id="filter" data-i18n-placeholder="devices.search" autocomplete="off">
+      </div>
+
+      <div class="selbar">
+        <label class="check"><input type="checkbox" id="selAll"><span id="selText"></span></label>
+        <div class="grow"></div>
+        <button class="link" data-select="online" data-i18n="select.online"></button>
+        <button class="link" data-select="connected" data-i18n="select.connected"></button>
+      </div>
+
+      <div class="dev-list" id="devList"></div>
+
+      <div class="side-foot">
+        <button class="btn" id="btnConnect"><i data-icon="link"></i><span data-i18n="devices.connect"></span></button>
+        <button class="btn" id="btnDisconnect"><i data-icon="unlink"></i><span data-i18n="devices.disconnect"></span></button>
+      </div>
+      <div class="subnets" id="subnets"></div>
+    </aside>
+
+    <!-- ============================================================ workspace -->
+    <main class="main">
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="apps"><i data-icon="package"></i><span data-i18n="tabs.apps"></span></button>
+        <button class="tab" data-tab="folders"><i data-icon="folder"></i><span data-i18n="tabs.folders"></span></button>
+        <button class="tab" data-tab="message"><i data-icon="message"></i><span data-i18n="tabs.message"></span></button>
+        <button class="tab" data-tab="audio"><i data-icon="volume"></i><span data-i18n="tabs.audio"></span></button>
+        <button class="tab" data-tab="power"><i data-icon="power"></i><span data-i18n="tabs.power"></span></button>
+        <button class="tab" data-tab="shell"><i data-icon="terminal"></i><span data-i18n="tabs.shell"></span></button>
+        <span class="tab-sep"></span>
+        <button class="tab" data-tab="screen"><i data-icon="screen"></i><span data-i18n="tabs.screen"></span></button>
+        <button class="tab" data-tab="sequences"><i data-icon="layers"></i><span data-i18n="tabs.sequences"></span><span class="tab-badge" id="seqDirtyDot" hidden></span></button>
+        <div class="grow"></div>
+        <button class="btn icon ghost sm" id="toggleLog" data-i18n-title="log.toggle"><i data-icon="panel"></i><span class="notify-dot" id="logDot" hidden></span></button>
+      </nav>
+
+      <div class="workspace" id="workspace">
+        <section class="content">
+          <div class="target-bar" id="targetBar">
+            <span class="target-icon"><i data-icon="board"></i></span>
+            <span id="targetTxt"></span>
+            <div class="grow"></div>
+            <span class="muted" id="targetSub"></span>
+          </div>
+
+          <!-- ---------------------------------------------------- Apps -->
+          <div class="pane active" data-pane="apps">
+            <div class="grid-2">
+              <section class="card">
+                <header class="card-head"><span class="card-icon"><i data-icon="upload"></i></span><div><h3 data-i18n="apps.installTitle"></h3><p class="hint" data-i18n="apps.installHint"></p></div></header>
+                <label class="drop" id="apkDrop">
+                  <i data-icon="package"></i>
+                  <strong id="apkName"></strong>
+                  <span class="hint" data-i18n="apps.dropHint"></span>
+                  <input type="file" id="apkFile" accept=".apk" hidden>
+                </label>
+                <label class="check"><input type="checkbox" id="apkGrant"><span data-i18n="apps.grant"></span></label>
+                <div class="card-foot"><button class="btn primary needs-target" id="btnInstall"><i data-icon="upload"></i><span data-i18n="apps.install"></span></button></div>
+              </section>
+              <section class="card">
+                <header class="card-head"><span class="card-icon red"><i data-icon="trash"></i></span><div><h3 data-i18n="apps.uninstallTitle"></h3><p class="hint" data-i18n-html="apps.uninstallHint"></p></div></header>
+                <div class="field">
+                  <div class="row">
+                    <input class="input grow mono" id="pkgName" list="pkgList" placeholder="com.example.app" autocomplete="off">
+                    <button class="btn" id="btnPkgList" data-i18n-title="apps.listTitle"><i data-icon="list"></i><span data-i18n="apps.list"></span></button>
+                  </div>
+                  <datalist id="pkgList"></datalist>
+                  <span class="hint" id="pkgHint"></span>
+                </div>
+                <div class="card-foot"><button class="btn danger needs-target" id="btnUninstall"><i data-icon="trash"></i><span data-i18n="apps.uninstall"></span></button></div>
+              </section>
+            </div>
+          </div>
+
+          <!-- ---------------------------------------------------- Folders -->
+          <div class="pane" data-pane="folders">
+            <section class="card narrow">
+              <header class="card-head"><span class="card-icon red"><i data-icon="folder"></i></span><div><h3 data-i18n="folders.title"></h3><p class="hint" data-i18n-html="folders.hint"></p></div></header>
+              <span class="label" data-i18n="folders.quick"></span>
+              <div class="chips" id="folderChips">
+                <button class="chip" data-path="/sdcard/Download">Download</button>
+                <button class="chip" data-path="/sdcard/Pictures">Pictures</button>
+                <button class="chip" data-path="/sdcard/DCIM">DCIM</button>
+                <button class="chip" data-path="/sdcard/Documents">Documents</button>
+                <button class="chip" data-path="/sdcard/Movies">Movies</button>
+                <button class="chip" data-path="/sdcard/Music">Music</button>
+                <button class="chip" data-path="/sdcard/Screenshots">Screenshots</button>
+              </div>
+              <div class="field">
+                <textarea class="input mono" id="folders" rows="5" placeholder="/sdcard/Download"></textarea>
+                <span class="hint" id="rootsHint"></span>
+              </div>
+              <div class="card-foot"><button class="btn danger needs-target" id="btnClear"><i data-icon="trash"></i><span data-i18n="folders.clear"></span></button></div>
+            </section>
+          </div>
+
+          <!-- ---------------------------------------------------- Message -->
+          <div class="pane" data-pane="message">
+            <div class="grid-2">
+              <section class="card">
+                <header class="card-head"><span class="card-icon"><i data-icon="message"></i></span><div><h3 data-i18n="msg.title"></h3><p class="hint" data-i18n="msg.hint"></p></div></header>
+                <div class="field-row">
+                  <div class="field">
+                    <span class="label" data-i18n="msg.mode"></span>
+                    <div class="seg" id="msgMode">
+                      <button data-v="screen" class="active" data-i18n="msg.modeScreen"></button>
+                      <button data-v="notification" data-i18n="msg.modeNotif"></button>
+                    </div>
+                  </div>
+                  <div class="field" id="msgLevelField">
+                    <span class="label" data-i18n="msg.level"></span>
+                    <div class="seg" id="msgLevel">
+                      <button data-v="info" class="active" data-i18n="msg.info"></button>
+                      <button data-v="warning" data-i18n="msg.warning"></button>
+                      <button data-v="urgent" data-i18n="msg.urgent"></button>
+                    </div>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="msgTitle" data-i18n="msg.titleField"></label>
+                  <input class="input" id="msgTitle" maxlength="120" data-i18n-placeholder="msg.titlePh">
+                </div>
+                <div class="field">
+                  <label for="msgText" data-i18n="msg.text"></label>
+                  <textarea class="input" id="msgText" rows="5" maxlength="2000" data-i18n-placeholder="msg.textPh"></textarea>
+                </div>
+                <label class="check"><input type="checkbox" id="msgSpeak"><span data-i18n="msg.speak"></span></label>
+                <div class="card-foot">
+                  <span class="hint" data-i18n="msg.footer"></span>
+                  <button class="btn primary needs-target" id="btnMessage"><i data-icon="send"></i><span data-i18n="msg.send"></span></button>
+                </div>
+              </section>
+              <section class="card preview-card">
+                <span class="label" data-i18n="msg.preview"></span>
+                <div class="board-preview" id="msgPreview">
+                  <div class="bp-screen">
+                    <div class="bp-popup">
+                      <span class="bp-tag"><span class="bp-dot"></span><span id="pvTag"></span></span>
+                      <div class="bp-title" id="pvTitle"></div>
+                      <div class="bp-text" id="pvText"></div>
+                    </div>
+                    <div class="bp-notif">
+                      <div class="bp-notif-head"><span class="bp-app"></span>AdbMime</div>
+                      <b id="pvNTitle"></b>
+                      <span id="pvNText"></span>
+                    </div>
+                  </div>
+                  <div class="bp-stand"></div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- ---------------------------------------------------- Audio -->
+          <div class="pane" data-pane="audio">
+            <section class="card narrow">
+              <header class="card-head"><span class="card-icon"><i data-icon="volume"></i></span><div><h3 data-i18n="audio.title"></h3><p class="hint" data-i18n="audio.hint"></p></div></header>
+              <div class="field">
+                <label for="audioText" data-i18n="audio.text"></label>
+                <textarea class="input" id="audioText" rows="4" maxlength="1000" data-i18n-placeholder="audio.textPh"></textarea>
+              </div>
+              <label class="drop compact" id="audioDrop">
+                <i data-icon="file"></i>
+                <strong id="audioName"></strong>
+                <span class="hint" data-i18n="audio.dropHint"></span>
+                <input type="file" id="audioFile" accept=".mp3,.wav,.ogg,.m4a" hidden>
+              </label>
+              <div class="field">
+                <div class="row"><label class="check"><input type="checkbox" id="volOn"><span data-i18n="audio.setVolume"></span></label><div class="grow"></div><span class="code" id="volVal">10</span></div>
+                <input type="range" id="volume" min="0" max="15" value="10" disabled>
+              </div>
+              <div class="card-foot"><button class="btn primary needs-target" id="btnAudio"><i data-icon="play"></i><span data-i18n="audio.play"></span></button></div>
+            </section>
+          </div>
+
+          <!-- ---------------------------------------------------- Power -->
+          <div class="pane" data-pane="power">
+            <p class="hint pane-intro" data-i18n="power.hint"></p>
+            <div class="power-grid">
+              <button class="power-card needs-target" data-power="shutdown" style="--c: var(--red)">
+                <span class="pi"><i data-icon="power"></i></span><b data-i18n="power.shutdown"></b><span data-i18n="power.shutdownDesc"></span>
+              </button>
+              <button class="power-card needs-target" data-power="reboot" style="--c: var(--amber)">
+                <span class="pi"><i data-icon="rotate"></i></span><b data-i18n="power.reboot"></b><span data-i18n="power.rebootDesc"></span>
+              </button>
+              <button class="power-card needs-target" data-power="screen" style="--c: var(--accent)">
+                <span class="pi"><i data-icon="moon"></i></span><b data-i18n="power.screen"></b><span data-i18n="power.screenDesc"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- ---------------------------------------------------- Shell -->
+          <div class="pane" data-pane="shell">
+            <section class="card narrow">
+              <header class="card-head"><span class="card-icon"><i data-icon="terminal"></i></span><div><h3 data-i18n="shell.title"></h3><p class="hint" data-i18n-html="shell.hint"></p></div></header>
+              <div class="row">
+                <div class="prompt grow"><span>$</span><input class="input mono" id="shellCmd" data-i18n-placeholder="shell.ph" autocomplete="off" spellcheck="false"></div>
+                <button class="btn primary needs-target" id="btnShell"><i data-icon="play"></i><span data-i18n="shell.run"></span></button>
+              </div>
+              <span class="label" style="margin-top:18px" data-i18n="shell.quick"></span>
+              <div class="chips" id="shellChips">
+                <button class="chip mono">getprop ro.build.version.release</button>
+                <button class="chip mono">wm size</button>
+                <button class="chip mono">dumpsys battery</button>
+                <button class="chip mono">df -h /sdcard</button>
+                <button class="chip mono">pm list packages -3</button>
+                <button class="chip mono">settings get system screen_brightness</button>
+                <button class="chip mono">ip addr show wlan0</button>
+              </div>
+            </section>
+          </div>
+
+          <!-- ---------------------------------------------------- Remote screen -->
+          <div class="pane" data-pane="screen">
+            <div class="screen-layout">
+              <section class="card screen-card">
+                <div class="screen-toolbar">
+                  <select class="input sm" id="scrDevice"></select>
+                  <button class="btn icon sm" id="scrRefresh" data-i18n-title="screen.refresh"><i data-icon="refresh"></i></button>
+                  <label class="switch"><input type="checkbox" id="scrLive"><span class="track"></span><span data-i18n="screen.live"></span></label>
+                  <select class="input sm" id="scrInterval" data-i18n-title="screen.interval">
+                    <option value="100">0.1 s</option>
+                    <option value="250">0.25 s</option>
+                    <option value="500">0.5 s</option>
+                    <option value="1000" selected>1 s</option>
+                    <option value="2000">2 s</option>
+                    <option value="5000">5 s</option>
+                  </select>
+                  <div class="grow"></div>
+                  <span class="muted mono" id="scrInfo"></span>
+                  <button class="btn icon sm" id="scrDownload" data-i18n-title="screen.download"><i data-icon="download"></i></button>
+                  <button class="btn icon sm" id="scrExpand" data-i18n-title="screen.expand"><i data-icon="maximize"></i></button>
+                </div>
+                <div class="screen-stage" id="scrStage" tabindex="0">
+                  <div class="screen-frame" id="scrFrame" hidden>
+                    <img id="scrImg" alt="" draggable="false">
+                    <svg class="screen-fx" id="scrFx"></svg>
+                  </div>
+                  <div class="empty" id="scrEmpty">
+                    <div class="big"><i data-icon="monitor"></i></div>
+                    <h3 data-i18n="screen.emptyTitle"></h3>
+                    <div data-i18n="screen.emptyText"></div>
+                  </div>
+                  <span class="screen-badge" id="scrKbd" data-i18n="screen.keyboardOn"></span>
+                  <span class="screen-badge rec" id="scrRecBadge"><i class="rec-dot"></i><span data-i18n="screen.recording"></span></span>
+                </div>
+                <p class="hint screen-help" data-i18n="screen.help"></p>
+              </section>
+
+              <div class="screen-side">
+                <section class="card">
+                  <span class="label" data-i18n="screen.keys"></span>
+                  <div class="keypad" id="scrKeys">
+                    <button class="btn" data-key="4" data-i18n-title="key.back"><i data-icon="back"></i></button>
+                    <button class="btn" data-key="3" data-i18n-title="key.home"><i data-icon="home"></i></button>
+                    <button class="btn" data-key="187" data-i18n-title="key.recents"><i data-icon="recents"></i></button>
+                    <button class="btn" data-key="82" data-i18n-title="key.menu"><i data-icon="menu"></i></button>
+                    <button class="btn" data-key="25" data-i18n-title="key.volDown"><i data-icon="volDown"></i></button>
+                    <button class="btn" data-key="24" data-i18n-title="key.volUp"><i data-icon="volUp"></i></button>
+                    <button class="btn" data-key="164" data-i18n-title="key.mute"><i data-icon="mute"></i></button>
+                    <button class="btn" data-key="26" data-i18n-title="key.power"><i data-icon="power"></i></button>
+                    <button class="btn" data-key="224" data-i18n-title="key.wake"><i data-icon="sunrise"></i></button>
+                    <button class="btn" data-key="223" data-i18n-title="key.sleep"><i data-icon="moon"></i></button>
+                    <button class="btn" data-key="66" data-i18n-title="key.enter"><i data-icon="enter"></i></button>
+                    <button class="btn" data-key="67" data-i18n-title="key.del"><i data-icon="del"></i></button>
+                  </div>
+                </section>
+                <section class="card">
+                  <label class="label" for="scrText" data-i18n="screen.text"></label>
+                  <form class="row" id="scrTextForm">
+                    <input class="input grow" id="scrText" maxlength="500" data-i18n-placeholder="screen.textPh" autocomplete="off">
+                    <button class="btn icon" type="submit" data-i18n-title="screen.send"><i data-icon="send"></i></button>
+                  </form>
+                  <span class="hint" data-i18n="screen.textHint"></span>
+                </section>
+                <section class="card">
+                  <span class="label" data-i18n="screen.record"></span>
+                  <label class="switch"><input type="checkbox" id="scrRecord"><span class="track"></span><span data-i18n="screen.recordToggle"></span></label>
+                  <label class="check"><input type="checkbox" id="scrRecordPauses" checked><span data-i18n="screen.recordPauses"></span></label>
+                  <p class="hint" data-i18n="screen.recordHint"></p>
+                  <div class="row">
+                    <span class="muted" id="scrRecCount"></span>
+                    <div class="grow"></div>
+                    <button class="btn sm" id="scrOpenSeq"><i data-icon="layers"></i><span data-i18n="screen.openSeq"></span></button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---------------------------------------------------- Sequences -->
+          <div class="pane" data-pane="sequences">
+            <div class="seq-layout">
+              <section class="card seq-lib">
+                <div class="row">
+                  <h3 class="grow" data-i18n="seq.library"></h3>
+                  <button class="btn icon sm" id="seqImport" data-i18n-title="seq.import"><i data-icon="upload"></i></button>
+                  <button class="btn sm primary" id="seqNew"><i data-icon="plus"></i><span data-i18n="seq.new"></span></button>
+                  <input type="file" id="seqImportFile" accept=".txt,.adb,.json,text/plain,application/json" hidden>
+                </div>
+                <div class="seq-list" id="seqList"></div>
+                <p class="hint" data-i18n="seq.formatHint"></p>
+              </section>
+
+              <section class="card seq-editor">
+                <div class="seq-head">
+                  <input class="input title-input" id="seqName" maxlength="80" data-i18n-placeholder="seq.namePh">
+                  <span class="dirty" id="seqDirty" data-i18n="seq.unsaved" hidden></span>
+                  <div class="grow"></div>
+                  <button class="btn sm" id="seqSave"><i data-icon="save"></i><span data-i18n="seq.save"></span></button>
+                  <button class="btn icon sm" id="seqDuplicate" data-i18n-title="seq.duplicate"><i data-icon="copy"></i></button>
+                  <button class="btn icon sm" id="seqExport" data-i18n-title="seq.export"><i data-icon="download"></i></button>
+                  <button class="btn icon sm danger-ghost" id="seqDelete" data-i18n-title="seq.delete"><i data-icon="trash"></i></button>
+                </div>
+                <div class="seq-steps" id="seqSteps"></div>
+                <div class="seq-add">
+                  <div class="menu-wrap">
+                    <button class="btn sm" id="seqAddBtn"><i data-icon="plus"></i><span data-i18n="seq.addStep"></span></button>
+                    <div class="menu" id="seqAddMenu" hidden></div>
+                  </div>
+                  <span class="muted" id="seqMeta"></span>
+                </div>
+                <div class="seq-foot">
+                  <label class="check"><input type="checkbox" id="seqStopOnError" checked><span data-i18n="seq.stopOnError"></span></label>
+                  <div class="grow"></div>
+                  <button class="btn primary needs-target" id="seqRun"><i data-icon="play"></i><span id="seqRunLabel"></span></button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------------------------------------------------- Activity -->
+        <aside class="activity" id="activity">
+          <div class="activity-head">
+            <i data-icon="activity"></i><h3 data-i18n="log.title"></h3>
+            <div class="grow"></div>
+            <button class="btn ghost sm" id="clearLog" data-i18n="log.clear"></button>
+          </div>
+          <div class="log" id="log"></div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============================================================ settings drawer -->
+  <div class="drawer-bg" id="settings">
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <header class="drawer-head">
+        <span class="card-icon"><i data-icon="settings"></i></span>
+        <h2 id="settingsTitle" data-i18n="settings.title"></h2>
+        <div class="grow"></div>
+        <button class="btn icon ghost" id="closeSettings" data-i18n-title="settings.close"><i data-icon="x"></i></button>
+      </header>
+      <div class="drawer-body">
+        <section class="set-section">
+          <h4 data-i18n="settings.language"></h4>
+          <p class="hint" data-i18n="settings.languageHint"></p>
+          <div class="lang-grid" id="langGrid"></div>
+        </section>
+        <section class="set-section">
+          <h4 data-i18n="settings.appearance"></h4>
+          <div class="theme-grid" id="themeGrid">
+            <button data-theme-pick="light"><span class="tp tp-light"><i></i><i></i><i></i></span><span data-i18n="settings.themeLight"></span></button>
+            <button data-theme-pick="dark"><span class="tp tp-dark"><i></i><i></i><i></i></span><span data-i18n="settings.themeDark"></span></button>
+            <button data-theme-pick="system"><span class="tp tp-system"><i></i><i></i><i></i></span><span data-i18n="settings.themeSystem"></span></button>
+          </div>
+        </section>
+        <section class="set-section">
+          <h4 data-i18n="settings.interface"></h4>
+          <div class="set-row">
+            <div><b data-i18n="settings.refresh"></b></div>
+            <select class="input sm" id="setRefresh">
+              <option value="2">2 s</option>
+              <option value="3">3 s</option>
+              <option value="5">5 s</option>
+              <option value="10">10 s</option>
+            </select>
+          </div>
+          <div class="set-row">
+            <div><b data-i18n="settings.confirm"></b><span class="hint" data-i18n="settings.confirmHint"></span></div>
+            <label class="switch"><input type="checkbox" id="setConfirm"><span class="track"></span></label>
+          </div>
+          <div class="set-row">
+            <div><b data-i18n="settings.activity"></b></div>
+            <label class="switch"><input type="checkbox" id="setActivity"><span class="track"></span></label>
+          </div>
+        </section>
+        <section class="set-section">
+          <h4 data-i18n="settings.server"></h4>
+          <dl class="info-list" id="serverInfo"></dl>
+        </section>
+        <p class="hint credits" data-i18n-html="settings.credits"></p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ============================================================ modal -->
+  <div class="modal-bg" id="modal">
+    <form class="modal" id="modalForm">
+      <h3 id="modalTitle"></h3>
+      <p id="modalText"></p>
+      <div id="modalBody"></div>
+      <div class="row modal-actions">
+        <button class="btn ghost" type="button" id="modalCancel" data-i18n="modal.cancel"></button>
+        <button class="btn primary" type="submit" id="modalOk"></button>
+      </div>
+    </form>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

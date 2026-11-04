@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AdbMime</title>
+  <script src="/assets/theme-boot.js"></script>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body class="booting">
+  <div class="login-wrap">
+    <form class="login-card" id="login" autocomplete="on">
+      <div class="brand">
+        <span class="logo"><i data-icon="logo"></i></span>
+        <span class="brand-name">AdbMime</span>
+      </div>
+      <p class="lead" data-i18n="login.lead"></p>
+      <div class="login-error" id="error"></div>
+      <div class="field">
+        <label for="username" data-i18n="login.username"></label>
+        <input class="input" id="username" name="username" autocomplete="username" autofocus>
+      </div>
+      <div class="field">
+        <label for="password" data-i18n="login.password"></label>
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password">
+      </div>
+      <button class="btn primary" type="submit" id="submit" data-i18n="login.submit"></button>
+      <div class="login-foot">
+        <div class="row" id="flags" style="gap:2px"></div>
+        <div class="grow"></div>
+        <button class="btn icon ghost sm" type="button" id="theme" data-i18n-title="topbar.theme"></button>
+      </div>
+    </form>
+  </div>
+  <script type="module">
+    import { hydrateIcons, icon } from '/assets/icons.js';
+    import { flagUrl, getLang, initI18n, LANGUAGES, setLang, t } from '/assets/i18n.js';
+    import { resolvedTheme, toggleTheme } from '/assets/prefs.js';
+
+    hydrateIcons();
+    await initI18n();
+
+    const renderFlags = () => {
+      document.getElementById('flags').innerHTML = LANGUAGES.map(
+        (l) => `<button type="button" class="flag ${l.code === getLang() ? 'active' : ''}" data-lang="${l.code}" title="${l.name}">
+          <img src="${flagUrl(l.code)}" alt="${l.name}"></button>`,
+      ).join('');
+    };
+    const renderTheme = () => (document.getElementById('theme').innerHTML = icon(resolvedTheme() === 'dark' ? 'sun' : 'moon'));
+    renderFlags();
+    renderTheme();
+    document.body.classList.remove('booting');
+
+    document.getElementById('flags').onclick = async (e) => {
+      const b = e.target.closest('[data-lang]');
+      if (b) {
+        await setLang(b.dataset.lang);
+        renderFlags();
+      }
+    };
+    document.getElementById('theme').onclick = toggleTheme;
+    window.addEventListener('themechange', renderTheme);
+
+    const form = document.getElementById('login');
+    const error = document.getElementById('error');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submit');
+      btn.disabled = true;
+      error.classList.remove('on');
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Lang': getLang() },
+          body: JSON.stringify({ username: form.username.value, password: form.password.value }),
+        });
+        if (res.ok) return location.replace('/');
+        error.textContent = (await res.json()).error || t('login.denied');
+        error.classList.add('on');
+      } catch {
+        error.textContent = t('login.unreachable');
+        error.classList.add('on');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
