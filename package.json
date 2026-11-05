@@ -1,0 +1,19 @@
+{
+  "name": "adbmime",
+  "version": "2.1.0",
+  "description": "Web console to discover and manage Android devices over ADB (TCP 5555).",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
+  }
+}

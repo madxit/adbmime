@@ -67,3 +67,6 @@ Thumbs.db
 /RemoteSystemsTempFiles/
 /.project
 /.settings/
+# AdbMime web console
+.env
+data/
