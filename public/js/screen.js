@@ -284,7 +284,7 @@ export function initScreen() {
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
     const a = Object.assign(document.createElement('a'), {
       href: scr.url,
-      download: `screen-${(d?.name || d?.ip || 'board').replace(/[^\w.-]+/g, '_')}-${stamp}.png`,
+      download: `screen-${(d?.name || d?.ip || 'device').replace(/[^\w.-]+/g, '_')}-${stamp}.png`,
     });
     a.click();
   };
