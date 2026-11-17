@@ -1,12 +1,15 @@
-// Application version (package.json) and git commit, resolved once at startup.
-// The commit comes from ADBMIME_COMMIT, the git CLI, or the .git folder read directly
-// (for hosts without git); "unknown" for a plain copy without .git.
+// Application version and git commit, resolved once at startup.
+// Packaged builds have them baked in by scripts/build.mjs (there is no package.json or .git next to the
+// executable). From sources: version from package.json; commit from ADBMIME_COMMIT, the git CLI, or the .git folder
+// read directly (for hosts without git); "unknown" for a plain copy without .git.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT_DIR } from './config.js';
 
-const { version } = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
+// Replaced by esbuild's `define` in packaged builds ({ version, commit, dirty }); undeclared otherwise.
+/* global __ADBMIME_BUILD__ */
+const baked = typeof __ADBMIME_BUILD__ === 'object' ? __ADBMIME_BUILD__ : null;
 
 const git = (args) =>
   execFileSync('git', args, { cwd: ROOT_DIR, timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
@@ -41,4 +44,9 @@ function resolveCommit() {
   }
 }
 
-export const build = { version, ...resolveCommit() };
+function fromSources() {
+  const { version } = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
+  return { version, ...resolveCommit() };
+}
+
+export const build = baked ? { version: baked.version, commit: baked.commit, dirty: baked.dirty } : fromSources();

@@ -41,6 +41,9 @@ Required features:
   (`public/js/dropdown.js`).
 - README.md (in Italian) must contain setup/config instructions and clear instructions to start the server; keep it
   in sync with every user-visible change.
+- Releases: pushing a version tag (git flow names them `Release-X.Y.Z`; `vX.Y.Z` also works) builds self-contained
+  executables (no Node.js needed on the target PC; `.exe` on Windows) and attaches them to the GitHub Release of
+  the tag (see "Release builds" below).
 
 The old hand-written Java/JavaFX code (`demo/`, `utils/`) was used only as inspiration and has been removed.
 Untracked leftovers (`composeApp/`, `gradle/`, `.gradle/`, `.idea/`) are not part of the app.
@@ -61,6 +64,8 @@ Untracked leftovers (`composeApp/`, `gradle/`, `.gradle/`, `.idea/`) are not par
 
 - Node.js ≥ 20.12, ES modules, Express 5, Multer 2. No frontend build step (vanilla JS in `public/`).
 - `npm install`, `npm start` (or `npm run dev` with `--watch`). Default port 8080.
+- `npm run build` (executable for the current platform in `dist/`) and `npm run smoke` (starts it and checks it);
+  devDependency: esbuild only.
 - Configuration via `.env` (see `.env.example`), loaded natively with `process.loadEnvFile`.
 - No automated tests yet. Syntax check: `node --check <file>`; dictionaries: import each `public/assets/i18n/*.js`
   and compare key sets (plural keys `_one`/`_other` count as one; zh has no `_one` keys, that is fine).
@@ -106,7 +111,9 @@ Untracked leftovers (`composeApp/`, `gradle/`, `.gradle/`, `.idea/`) are not par
   legacy `#@audio` lines / `audio` steps are converted to audio popups.
 - `src/store.js`: every JSON file in `data/` is written atomically (temp + rename); a corrupted file is moved to
   `<file>.corrupt-<ts>` instead of being overwritten. `src/version.js`: version + git commit (git CLI, `.git` files,
-  or `ADBMIME_COMMIT`) and dirty flag, exposed in `/api/state` and printed at startup.
+  or `ADBMIME_COMMIT`; baked in for packaged builds) and dirty flag, exposed in `/api/state` and printed at startup.
+- `src/startup.js` (first import of server.js): `fatal(message)` for startup errors; in the packaged Windows `.exe`
+  (own console window when double-clicked) it waits for Enter so the error stays readable.
 - `src/library.js`: content-addressed file library in `data/library/` (APKs/audio referenced by sequences);
   `GET/POST /api/library`; install/message routes accept `libraryFile`.
 - Remote screen: `GET /api/devices/:serial/screen` (PNG via `exec-out screencap -p`, deduplicated per device) and
@@ -138,12 +145,42 @@ Untracked leftovers (`composeApp/`, `gradle/`, `.gradle/`, `.idea/`) are not par
   `assets/favicon.svg`.
 - `data/` (gitignored): `devices.json`, `sequences.json`, `library/`, `uploads/` (APK, deleted after install), `media/` (TTL 24h).
 
+## Release builds (self-contained executables)
+
+- `.github/workflows/release.yml`: on push of tags `Release-*` / `v[0-9]*` (and manual "Run workflow"). Matrix
+  `windows-x64` (windows-latest), `linux-x64` (ubuntu-latest), `linux-arm64` (ubuntu-24.04-arm, free for public
+  repos), `macos-arm64` (macos-latest): `npm ci` → `npm run build` → `npm run smoke` → upload-artifact. Job
+  `publish` runs only for tags and only if every build passed: creates the GitHub Release (title `AdbMime X.Y.Z`,
+  Italian download table + `--generate-notes`, `--prerelease` when the version has a `-suffix`) or, if it exists,
+  re-uploads with `--clobber`. A manual run on a branch only builds (archives in the run's artifacts).
+  Action majors (checked Nov 2026): checkout@v7, setup-node@v7 (`node-version: 26`), upload-artifact@v7,
+  download-artifact@v8. macOS x64 is not supported by Node single executables: no Intel Mac build.
+- `scripts/build.mjs`: esbuild bundles `src/server.js` into one CommonJS file (`dist/bundle/server.cjs`; `define`
+  `__ADBMIME_BUILD__` = `{ version, commit, dirty }`, `import.meta.url` shimmed from `__filename`), then
+  `node --build-sea` (Node ≥ 25.5, **official build**: Homebrew's node has SEA disabled → `SEA_NODE=/path/to/node`).
+  Windows: Node's Authenticode signature removed first with `signtool remove /s` (Windows SDK; warning if missing).
+  macOS: `codesign --sign - --force` (ad hoc). Package `dist/adbmime-<version>-<os>-<arch>/` = executable +
+  `public/` + `src/shared/` + `.env.example` + `README.md` + `THIRD-PARTY-NOTICES.txt` (Node license + licenses of
+  the bundled npm packages, from the esbuild metafile); archived with tar (`.tar.gz`, or `.zip` via Windows'
+  `System32\tar.exe`) + `.sha256`; `dist/build-info.json` for the smoke test. On a tag the version comes from the tag
+  (warning if it differs from package.json).
+- `scripts/smoke-test.mjs`: starts the executable from another cwd without adb and checks login page, static
+  files, login, `/`, `/shared/…`, `/api/state` (baked version/commit) and that `data/` is created next to it.
+- Packaged mode (`PACKAGED` = `isSea()` in config.js): `ROOT_DIR` = folder of the executable (`.env`, `data/`,
+  `public/`, `src/shared/`), never the cwd. Keep the server bundleable into one CJS file: no top-level `await`, no
+  `import()`/`require()` of local files at runtime, no `import.meta` except `.url` in config.js. A new file read from
+  disk at runtime must also be copied into the package by build.mjs (today only `public/` and `src/shared/`).
+- Not testable on the owner's Mac without the official Node binary (Homebrew): verify with a manual workflow run on
+  a branch, or with `SEA_NODE`.
+
 ## Rules & gotchas (learned the hard way)
 
 - Every UI string goes through i18n (`data-i18n*` attributes or `t()`) and must exist in all 7 dictionaries; same for
   server strings in `src/locales.js`. Translations must agree in gender with "dispositivo/dispositivi" (it/es/pt
   masculine), "appareil" (fr, `l'appareil`), "Gerät/Geräte/Geräten" (de, neuter), "设备" with measure word `台` (zh).
   Values containing `'` use double quotes.
+- Express 5 calls the `app.listen` callback also on failure, with the error: it returns early on `err` (the
+  `server.on('error')` handler reports it), otherwise the startup banner was printed before "cannot start".
 - `server.requestTimeout = 0`: Node's default 300 s cut long sequences. Background loops use single-flight wrappers
   (`refreshAdb`, `probeKnown`); call `.fresh()` when the result must include a change just made (e.g. after connect).
 - Never write `el.onclick = (e) => cond && fn()`: returning `false` cancels the click (it broke the modal OK button
