@@ -1,4 +1,6 @@
 // AdbMime web console - HTTP entry point.
+// First import: it must be in place before the other modules run (see startup.js).
+import { fatal, startupDone } from './startup.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -394,7 +396,10 @@ function cleanupUploads() {
 // A stray rejected promise must never take the whole console down.
 process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 
-const server = app.listen(config.port, config.host, async () => {
+// Express 5 also calls this back with the error when listening fails: that case is handled by server.on('error').
+const server = app.listen(config.port, config.host, async (err) => {
+  if (err) return;
+  startupDone();
   const addrs = localInterfaces().map((i) => `http://${i.address}:${config.port}`);
   console.log(`AdbMime web console v${build.version}${build.commit ? ` (${build.commit}${build.dirty ? '+' : ''})` : ''}`);
   console.log(`  local:   http://localhost:${config.port}`);
@@ -414,9 +419,7 @@ const server = app.listen(config.port, config.host, async () => {
 // default 5 minute request timeout would cut them off.
 server.requestTimeout = 0;
 server.on('error', (err) => {
-  const reason = err.code === 'EADDRINUSE' ? `port ${config.port} is already in use (set PORT in .env)` : err.message;
-  console.error(`AdbMime cannot start: ${reason}`);
-  process.exit(1);
+  fatal(err.code === 'EADDRINUSE' ? `port ${config.port} is already in use (set PORT in .env)` : err.message);
 });
 
 function shutdown(sig) {

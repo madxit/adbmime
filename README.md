@@ -25,13 +25,59 @@ Funzioni:
 - ⚙️ **Impostazioni**: lingua (menu con le bandiere), tema (chiaro, scuro, sistema), frequenza di aggiornamento, conferme, informazioni sul server (versione e commit)
 - 🔐 Accesso con nome utente e password definiti nel file `.env`
 
+**Download**: versioni pronte all'uso per Windows, macOS e Linux, senza installare Node.js, nella pagina
+[Releases](https://github.com/madxit/adbmime/releases) (vedi la [sezione 1](#1-versione-pronta-alluso-senza-nodejs)).
+
 ---
 
-## 1. Requisiti
+## 1. Versione pronta all'uso (senza Node.js)
+
+A ogni nuova versione viene pubblicato un archivio per sistema operativo con l'eseguibile di AdbMime, che contiene
+già Node.js. Si scarica dalla pagina [Releases](https://github.com/madxit/adbmime/releases):
+
+| Sistema | Archivio | Da avviare |
+|---|---|---|
+| Windows 10/11 (64 bit) | `adbmime-<versione>-windows-x64.zip` | `adbmime.exe` |
+| macOS con Apple Silicon (M1 e successivi) | `adbmime-<versione>-macos-arm64.tar.gz` | `adbmime` |
+| Linux x64 | `adbmime-<versione>-linux-x64.tar.gz` | `./adbmime` |
+| Linux ARM64 (es. Raspberry Pi con sistema a 64 bit) | `adbmime-<versione>-linux-arm64.tar.gz` | `./adbmime` |
+
+I Mac con processore Intel non sono supportati dagli eseguibili di Node.js: su questi usa l'installazione dai
+sorgenti (sezioni 2–4).
+
+1. **Estrai l'archivio** in una cartella in cui puoi scrivere (es. Documenti, non *Programmi*): accanto
+   all'eseguibile vengono salvati i dati (cartella `data/`: dispositivi, sequenze, file) e la configurazione (`.env`).
+2. **Installa `adb`** come indicato nella [sezione 2](#2-requisiti): è l'unico requisito.
+3. **Avvia l'eseguibile**:
+   - **Windows**: doppio clic su `adbmime.exe`. Si apre una finestra con gli indirizzi della console: lasciala
+     aperta (chiudendola il server si ferma). Al primo avvio:
+     - *PC protetto da Windows*: l'eseguibile non è firmato, scegli **Ulteriori informazioni → Esegui comunque**;
+     - *Windows Firewall*: consenti l'accesso alle **reti private** (l'app può comparire come *Node.js JavaScript
+       Runtime*), altrimenti i dispositivi non riescono a caricare popup e audio.
+   - **macOS**: il sistema blocca i programmi scaricati da Internet e non notarizzati. Nel Terminale, dalla
+     cartella estratta:
+     ```bash
+     xattr -dr com.apple.quarantine .
+     ./adbmime
+     ```
+     In alternativa: doppio clic su `adbmime`, poi *Impostazioni di Sistema → Privacy e sicurezza → Apri comunque*.
+   - **Linux**: `./adbmime` dalla cartella estratta.
+4. Apri nel browser l'indirizzo mostrato (es. `http://localhost:8080`) e accedi: di default nome utente e password
+   sono vuoti.
+
+**Configurazione**: copia `.env.example` in `.env`, nella stessa cartella dell'eseguibile, e modificalo (le voci
+sono descritte nella [sezione 5](#5-configurazione-env)). Su macOS e Linux i file che iniziano con il punto sono
+nascosti: nel Finder li mostri con `Cmd + Shift + .`.
+
+**Aggiornamento**: estrai la nuova versione in un'altra cartella e copiaci `data/` e `.env` della precedente.
+
+Ogni archivio è accompagnato da un file `.sha256` con il suo checksum SHA-256.
+
+## 2. Requisiti
 
 | Requisito | Note |
 |---|---|
-| **Node.js ≥ 20.12** | <https://nodejs.org> (consigliata la versione LTS) |
+| **Node.js ≥ 20.12** (solo per l'avvio dai sorgenti) | <https://nodejs.org> (consigliata la versione LTS) |
 | **Android platform-tools (`adb`)** | Vedi sotto |
 | **Sintesi vocale** (solo di riserva, per i dispositivi senza voce di sintesi) | macOS: già inclusa (`say`). Windows: già inclusa. Linux: `espeak-ng` |
 | Il PC deve essere **sulla stessa rete** dei dispositivi | I dispositivi devono poter raggiungere il PC sulla porta del server (default 8080) |
@@ -51,7 +97,7 @@ winget install Google.PlatformTools
 
 Verifica con `adb version`. Se `adb` non è nel `PATH`, indica il percorso completo in `ADB_PATH` nel file `.env`.
 
-## 2. Installazione
+## 3. Installazione (dai sorgenti)
 
 ```bash
 cd adbmime
@@ -59,7 +105,7 @@ npm install
 cp .env.example .env      # su Windows: copy .env.example .env
 ```
 
-## 3. Avvio del server
+## 4. Avvio del server
 
 ```bash
 npm start
@@ -80,7 +126,7 @@ Per lo sviluppo, `npm run dev` riavvia il server automaticamente a ogni modifica
 
 Per fermare il server: `Ctrl + C`.
 
-## 4. Configurazione (`.env`)
+## 5. Configurazione (`.env`)
 
 Tutte le voci sono opzionali; i valori di default sono in `.env.example`.
 
@@ -101,7 +147,7 @@ Tutte le voci sono opzionali; i valori di default sono in `.env.example`.
 
 > ⚠️ Se i dispositivi sono su più reti o su una rete più grande di una /24 (es. `10.0.0.0/22`), imposta `SCAN_SUBNETS`.
 
-## 5. Configurazione necessaria su rete e dispositivi
+## 6. Configurazione necessaria su rete e dispositivi
 
 1. **ADB via rete attivo sui dispositivi** (porta 5555). Se un dispositivo non ha la porta aperta, collegalo via USB una volta ed esegui `adb tcpip 5555`.
 2. **Prima connessione**: sul dispositivo può comparire *"Consentire il debug USB?"*. Seleziona **"Consenti sempre da questo computer"** e premi OK. Finché non lo fai il dispositivo resta nello stato *Da autorizzare*.
@@ -111,7 +157,7 @@ Tutte le voci sono opzionali; i valori di default sono in `.env.example`.
 4. **Rete**: il PC deve raggiungere i dispositivi sulla porta 5555 (stessa VLAN o regole di routing che lo permettano). Se usi IP statici per i dispositivi, puoi aggiungerli con **Aggiungi IP**.
 5. **Browser predefinito sui dispositivi** (per i popup, anche audio): se Android chiede ogni volta con quale app aprire, scegli il browser e seleziona *"Sempre"*.
 
-## 6. Uso della console
+## 7. Uso della console
 
 L'interfaccia è divisa in tre zone: a sinistra l'**elenco compatto dei dispositivi**, al centro le **funzioni**
 (schede *App, Cartelle, Popup, Energia, Shell, Schermo remoto, Sequenze*), a destra il pannello **Attività**
@@ -249,12 +295,13 @@ per forza essere in rete: il server crea un tunnel `adb reverse` e il dispositiv
 Viene usato `svc power shutdown` e, se non disponibile, `reboot -p`. Su alcuni modelli lo spegnimento
 remoto può essere bloccato dal produttore: in tal caso usa *Standby schermo*.
 
-## 7. Struttura del progetto
+## 8. Struttura del progetto
 
 ```
 src/
   server.js    rotte HTTP ed avvio
-  config.js    lettura del file .env
+  startup.js   errori fatali all'avvio (su Windows la finestra resta aperta per leggerli)
+  config.js    lettura del file .env (cartella dell'eseguibile nella versione pronta all'uso)
   auth.js      login e cookie di sessione firmato
   adb.js       wrapper del comando adb
   network.js   rilevamento reti locali e scansione porta 5555
@@ -274,15 +321,44 @@ public/
   js/          moduli dell'interfaccia (dispositivi, azioni, schermo, sequenze, impostazioni)
   assets/      stile (tema chiaro/scuro), icone, traduzioni (i18n/), bandiere (flags/)
 data/          dati runtime (dispositivi noti, sequenze, libreria file, upload, audio) – non versionato
+scripts/
+  build.mjs       crea l'eseguibile pronto all'uso per il sistema corrente (in dist/)
+  smoke-test.mjs  avvia l'eseguibile creato e verifica che la console funzioni
+.github/workflows/
+  release.yml     compila e pubblica gli eseguibili a ogni tag di versione
 ```
 
-## 8. Sicurezza
+## 9. Pubblicare una nuova versione
+
+Gli archivi della [sezione 1](#1-versione-pronta-alluso-senza-nodejs) li prepara il workflow GitHub Actions
+`.github/workflows/release.yml`, che parte da solo quando su GitHub arriva un tag di versione:
+
+1. aggiorna `version` in `package.json` (es. `2.2.0`);
+2. chiudi la release con git flow (`git flow release start Release-2.2.0` … `git flow release finish Release-2.2.0`),
+   che crea il tag `Release-2.2.0` (vanno bene anche i tag `v2.2.0`);
+3. invia branch e tag: `git push origin main develop --tags`.
+
+Il workflow compila l'eseguibile per Windows x64, Linux x64 e ARM64 e macOS Apple Silicon, lo avvia per una prova
+(*smoke test*) e, solo se tutte le piattaforme riescono, crea la **GitHub Release** del tag con gli archivi allegati
+e le note generate automaticamente (con una tabella dei download). Se la versione del tag è diversa da quella di
+`package.json` compare un avviso e vale quella del tag; i tag con un suffisso (es. `v2.2.0-beta.1`) diventano
+*pre-release*.
+
+Si può anche avviare a mano da *Actions → Release → Run workflow*: su un **branch** compila e prova soltanto (gli
+archivi si scaricano dalla pagina dell'esecuzione, senza creare release), su un **tag** ricrea gli archivi e li
+ricarica nella sua release.
+
+Per creare in locale l'eseguibile del proprio sistema: `npm run build` (risultato in `dist/`), poi `npm run smoke`
+per provarlo. Serve Node.js ≥ 25.5 nella versione ufficiale di <https://nodejs.org>: il Node.js di Homebrew non
+supporta gli eseguibili, in quel caso indica quello ufficiale con `SEA_NODE=/percorso/di/node npm run build`.
+
+## 10. Sicurezza
 
 - Chiunque abbia accesso alla console può eseguire comandi sui dispositivi: **imposta `AUTH_USERNAME` e `AUTH_PASSWORD`** prima di usarla in produzione e imposta un `SESSION_SECRET`.
 - La porta ADB 5555 aperta permette il controllo completo dei dispositivi a chiunque sia sulla rete: è consigliato isolarli in una VLAN dedicata.
 - Le pagine `/m/<id>` e `/media/<file>` sono pubbliche (i dispositivi non hanno login) ma usano identificativi casuali non indovinabili.
 
-## 9. Crediti
+## 11. Crediti
 
 - Bandiere delle lingue: [Twemoji](https://github.com/jdecked/twemoji) (grafica © Twitter/X e collaboratori,
   licenza [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)), incluse in `public/assets/flags/`.

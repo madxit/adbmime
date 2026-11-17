@@ -1,0 +1,119 @@
+# Release builds: AdbMime as self-contained executables (Node.js single executable applications, built by
+# scripts/build.mjs), so the server runs on a PC without Node.js.
+#
+# Started by pushing a release tag: Release-X.Y.Z (the one `git flow release finish` creates) or vX.Y.Z.
+# Every platform is built and smoke-tested; only when all of them pass are the archives attached to the GitHub
+# Release of the tag (created, with generated notes, if it does not exist yet).
+#
+# "Run workflow" in the Actions tab: on a tag it rebuilds and re-attaches the files; on a branch it only builds
+# (archives downloadable from the run page), to try the workflow without publishing anything.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'Release-*'
+      - 'v[0-9]*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runner: windows-latest
+          - target: linux-x64
+            runner: ubuntu-latest
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          # Intel Macs are not supported by Node.js single executables (they can run AdbMime from sources).
+          - target: macos-arm64
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Runtime embedded in the executables (--build-sea needs Node.js >= 25.5).
+          node-version: 26
+
+      - run: npm ci
+
+      - name: Build the executable
+        run: npm run build
+
+      - name: Smoke test
+        run: npm run smoke
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: adbmime-${{ matrix.target }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Attach the archives to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l assets
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber
+            exit 0
+          fi
+
+          version="${TAG#Release-}"
+          version="${version#v}"
+          prerelease=""
+          case "$version" in *-*) prerelease="--prerelease" ;; esac
+
+          cat > notes.md <<'EOF'
+          ## Download
+
+          Estrai l'archivio del tuo sistema e avvia AdbMime: **non serve installare Node.js**.
+
+          | Sistema | Archivio | Da avviare |
+          |---|---|---|
+          | Windows 10/11 (64 bit) | `adbmime-@VERSION@-windows-x64.zip` | `adbmime.exe` |
+          | macOS (Apple Silicon) | `adbmime-@VERSION@-macos-arm64.tar.gz` | `adbmime` |
+          | Linux x64 | `adbmime-@VERSION@-linux-x64.tar.gz` | `./adbmime` |
+          | Linux ARM64 (es. Raspberry Pi a 64 bit) | `adbmime-@VERSION@-linux-arm64.tar.gz` | `./adbmime` |
+
+          Sul PC serve comunque `adb` (Android platform-tools). Primo avvio su Windows e macOS, configurazione
+          (`.env`) e aggiornamento: vedi il [README](https://github.com/@REPO@/blob/@TAG@/README.md#1-versione-pronta-alluso-senza-nodejs).
+          I file `.sha256` contengono i checksum SHA-256 degli archivi.
+          EOF
+          sed -i -e "s|@VERSION@|$version|g" -e "s|@REPO@|$GH_REPO|g" -e "s|@TAG@|$TAG|g" notes.md
+
+          gh release create "$TAG" assets/* --verify-tag --title "AdbMime $version" \
+            --notes-file notes.md --generate-notes $prerelease

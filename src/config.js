@@ -2,9 +2,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { isSea } from 'node:sea';
 import { fileURLToPath } from 'node:url';
 
-export const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Packaged build (single executable, see scripts/build.mjs): .env, data/, public/ and src/shared/ sit next to the
+// executable, whatever the working directory. From sources: the repository root.
+export const PACKAGED = isSea();
+export const ROOT_DIR = PACKAGED
+  ? path.dirname(process.execPath)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const envFile = path.join(ROOT_DIR, '.env');
 if (fs.existsSync(envFile)) {
